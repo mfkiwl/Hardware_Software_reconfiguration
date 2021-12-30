@@ -59,16 +59,16 @@ architecture rtl of butterfly is
         );
     end component;
     
-    signal s_out1, s_out2 : std_logic_vector(63 downto 0);
+    signal s_a_reg, s_b_reg : std_logic_vector(63 downto 0);
     
-    signal s_a_real, s_a_imag, s_b_real, s_b_imag, s_twiddle_real, s_twiddle_imag : std_logic_vector(31 downto 0) := (others => '0'); 
+    signal s_a_real, s_a_imag, s_b_real, s_b_imag, s_b_imag_reg, s_twiddle_real, s_twiddle_imag : std_logic_vector(31 downto 0) := (others => '0'); 
     signal s_a_real_extended, s_a_imag_extended : std_logic_vector(63 downto 0) := (others => '0');
     signal s_op1_real_mac1_op, s_op1_imag_mac1_op, s_op2_real_mac1_op, s_op2_imag_mac1_op : std_logic_vector(64 downto 0) := (others => '0');
     signal s_op1_real_unrounded, s_op1_imag_unrounded, s_op2_real_unrounded, s_op2_imag_unrounded : std_logic_vector(65 downto 0) := (others => '0');
     signal s_mac_op1_real_unrounded_2comp, s_mac_op1_imag_unrounded_2comp, s_mac_op2_real_unrounded_2comp, s_mac_op2_imag_unrounded_2comp : std_logic_vector(64 downto 0) := (others => '0');
     signal s_op1_real_mac1_op_reg, s_op1_imag_mac1_op_reg, s_op2_real_mac1_op_reg, s_op2_imag_mac1_op_reg : std_logic_vector(64 downto 0) := (others => '0');   
 begin
-
+      
     s_a_real <= i_a(63 downto 32);
     s_a_imag <= i_a(31 downto 0);
     
@@ -94,7 +94,7 @@ begin
                         PCOUT => open);
     
     mac_op1_real_2: mac_stage2
-             port map(  A => s_b_imag,
+             port map(  A => s_b_imag_reg,
                         B => s_twiddle_imag,
                         C => s_op1_real_mac1_op_reg,
                         SUBTRACT => '1',
@@ -110,10 +110,10 @@ begin
                         PCOUT => open);
     
     mac_op1_imag_2: mac_stage2
-             port map(  A => s_b_imag,
+             port map(  A => s_b_imag_reg,
                         B => s_twiddle_real,
                         C => s_op1_imag_mac1_op_reg,
-                        SUBTRACT => '1',
+                        SUBTRACT => '0',
                         P => s_op1_imag_unrounded,
                         PCOUT => open);
                           
@@ -127,7 +127,7 @@ begin
                         PCOUT => open);
     
     mac_op2_real_2: mac_stage2
-             port map(  A => s_b_imag,
+             port map(  A => s_b_imag_reg,
                         B => s_twiddle_imag,
                         C => s_op2_real_mac1_op_reg,
                         SUBTRACT => '0',
@@ -143,7 +143,7 @@ begin
                         PCOUT => open);
     
     mac_op2_imag_2: mac_stage2
-             port map(  A => s_b_imag,
+             port map(  A => s_b_imag_reg,
                         B => s_twiddle_real,
                         C => s_op2_imag_mac1_op_reg,
                         SUBTRACT => '1',
@@ -152,21 +152,27 @@ begin
                         
     pipeline_reg_proc: process(clk, rst)
     begin
-        if rst = '1' then
-            s_op1_real_mac1_op_reg <= (others => '0'); 
-            s_op1_imag_mac1_op_reg <= (others => '0'); 
-            s_op2_real_mac1_op_reg <= (others => '0'); 
-            s_op2_imag_mac1_op_reg <= (others => '0'); 
-        elsif rising_edge(clk) then
-            s_op1_real_mac1_op_reg <= s_op1_real_mac1_op;
-            s_op1_imag_mac1_op_reg <= s_op1_imag_mac1_op;
-            s_op2_real_mac1_op_reg <= s_op2_real_mac1_op;
-            s_op2_imag_mac1_op_reg <= s_op2_imag_mac1_op;
+        if rising_edge(clk) then
+            if rst = '1' then
+                s_a_reg <= (others => '0');
+                s_b_reg <= (others => '0');
+                s_op1_real_mac1_op_reg <= (others => '0'); 
+                s_op1_imag_mac1_op_reg <= (others => '0'); 
+                s_op2_real_mac1_op_reg <= (others => '0'); 
+                s_op2_imag_mac1_op_reg <= (others => '0'); 
+                s_b_imag_reg <= (others => '0');
+            else
+                s_a_reg <= i_a;
+                s_b_reg <= i_b;
+                s_op1_real_mac1_op_reg <= s_op1_real_mac1_op;
+                s_op1_imag_mac1_op_reg <= s_op1_imag_mac1_op;
+                s_op2_real_mac1_op_reg <= s_op2_real_mac1_op;
+                s_op2_imag_mac1_op_reg <= s_op2_imag_mac1_op;
+                s_b_imag_reg <= s_b_imag;
+            end if;
         end if;
     end process pipeline_reg_proc;
     -- TRUNCATION (NOT SURE HOW THIS PART IS WORKING :/)
-    s_out1 <= s_op1_real_unrounded(60 downto 29) & s_op1_imag_unrounded(60 downto 29);  
-    s_out2 <= s_op2_real_unrounded(60 downto 29) & s_op2_imag_unrounded(60 downto 29);
     o_out1 <= s_op1_real_unrounded(60 downto 29) & s_op1_imag_unrounded(60 downto 29); 
     o_out2 <= s_op2_real_unrounded(60 downto 29) & s_op2_imag_unrounded(60 downto 29);
                         

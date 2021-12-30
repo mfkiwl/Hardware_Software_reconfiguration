@@ -40,7 +40,10 @@ entity fft_hw_sw is
            i_start_op : in std_logic;
            i_end_op : in std_logic;
            i_start_stage : in std_logic;
-           o_stage_fin : out std_logic);
+           o_stage_flag : out std_logic_vector(1 downto 0);
+           i_debug_regbank_addr : in std_logic_vector(2 downto 0);
+           o_debug_regbank_data_real : out std_logic_vector(word_len - 1 downto 0);
+           o_debug_regbank_data_imag : out std_logic_vector(word_len - 1 downto 0));
 end fft_hw_sw;
 
 architecture rtl_fft of fft_hw_sw is
@@ -79,10 +82,17 @@ architecture rtl_fft of fft_hw_sw is
     signal s_twiddle_muxsw_op : twiddle_mux_op;
     
     type stage_out is array(0 to 7) of std_logic_vector((2 * word_len) - 1 downto 0);
-    signal s_muxsw_op : stage_out := (others => x"0000000000000000");
+    signal s_muxsw_op, s_muxsw_pipeline_reg : stage_out := (others => x"0000000000000000");
     
     signal s_loadip, s_regwrite_en, s_wait_counter : std_logic := '0';
+    signal s_start_stage_reg : std_logic := '0';
 begin
+
+    debug_regbank_mux: entity work.mux_64bit_8x1
+                       port map( i_sel => i_debug_regbank_addr,
+                                 i_ip => s_reg_bank,
+                                 o_op(63 downto 32) => o_debug_regbank_data_real,
+                                 o_op(31 downto 0) => o_debug_regbank_data_imag);
 
     -- BUTTEFLY INPUT MUX CROSSSWITCH
     mux_switch: for i in 0 to 7 generate
@@ -138,15 +148,15 @@ begin
                                     o_out1 => s_butterfly_op(2 * i),
                                     o_out2 => s_butterfly_op(2 * i + 1));   
     end generate butterfly_stage;
-
-    -- CONTROL FSM
     
+    -- CONTROL FSM
     s_mem_index_bit_reversed <= unsigned(reverse_vector(std_logic_vector(s_mem_index)));
     o_bram_addr <= std_logic_vector(s_bram_addr);
     
     fsm_proc: process(clk)
     begin
         if rising_edge(clk) then
+            s_start_stage_reg <= i_start_stage;
             if curr_state = idle then
                 s_wait_counter <= '0'; 
                 if i_start_op = '1' then
@@ -176,8 +186,10 @@ begin
                 if i_end_op = '1' then
                     curr_state <= store_result;
                     s_bram_out_sel <= std_logic_vector(to_unsigned(0, 3));
-                elsif i_start_stage = '1' then
+                elsif i_start_stage = '1' and s_start_stage_reg = '0' then
                     curr_state <= wait_for_stage;
+                else
+                    curr_state <= wait_for_arm;
                 end if;   
             elsif curr_state = wait_for_stage then 
                 if s_wait_counter = '0' then
@@ -191,7 +203,7 @@ begin
                 s_wait_counter <= '0'; 
                 if s_data_count < 8 then
                     s_bram_out_sel <= std_logic_vector(unsigned(s_bram_out_sel) + 1);
-                    s_bram_addr <= s_bram_addr + 1;
+                    s_bram_addr <= s_bram_addr + 1;     -- Do reordering of output using software on ARM core
                     s_mem_index <= s_mem_index + 1;
                     s_data_count <= s_data_count + 1;
                 else
@@ -204,49 +216,52 @@ begin
         end if;     
     end process fsm_proc;   
     
-    fsm_output_proc: process(curr_state)
+    reg_write_en_proc: process(s_wait_counter, curr_state)
     begin
-        if s_wait_counter = '0' then 
-            s_regwrite_en <= '0';
-        else
+        if s_wait_counter = '1' or curr_state = load_data then 
             s_regwrite_en <= '1';
+        else
+            s_regwrite_en <= '0';
         end if;
-        
+    end process reg_write_en_proc;
+    
+    fsm_output_proc: process(curr_state)
+    begin       
         if curr_state = idle then
             s_loadip <= '0';
             o_bram_en <= '0';
             o_bram_wen <= '0';
-            o_stage_fin <= '0';
+            o_stage_flag <= '0' & '0';      --  o_stage_flag[1] -> Busy, o_stage_flag[0] -> Ready
         elsif curr_state = wait_for_BRAM then
             s_loadip <= '0';
             o_bram_en <= '1';
             o_bram_wen <= '0';
-            o_stage_fin <= '0';
+            o_stage_flag <= '0' & '0';
         elsif curr_state = load_data then 
             s_loadip <= '1';
             o_bram_en <= '1';
             o_bram_wen <= '0';
-            o_stage_fin <= '0';
+            o_stage_flag <= '0' & '0';
         elsif curr_state = wait_for_arm then
             s_loadip <= '0';
             o_bram_en <= '0';
             o_bram_wen <= '0'; 
-            o_stage_fin <= '1';
+            o_stage_flag <= '0' & '1';
         elsif curr_state = wait_for_stage then
             s_loadip <= '0';
             o_bram_en <= '0';
-            o_bram_wen <= '0'; 
-            o_stage_fin <= '0';
+            o_bram_wen <= '0';
+            o_stage_flag <= '1' & '0'; 
         elsif curr_state = store_result then 
             s_loadip <= '0';
             o_bram_en <= '1';
             o_bram_wen <= '1';
-            o_stage_fin <= '0';
+            o_stage_flag <= '1' & '0';
         else
             s_loadip <= '0';
             o_bram_en <= '0';
             o_bram_wen <= '0';
-            o_stage_fin <= '0';
+            o_stage_flag <= '0' & '0';
         end if;
     end process fsm_output_proc; 
 end rtl_fft;
