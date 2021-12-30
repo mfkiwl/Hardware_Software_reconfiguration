@@ -1,0 +1,7 @@
+fft_hw_sw_git/bd/zynq_interface/zynq_interface/hdl/
+fft_hw_sw_git/bd/zynq_interface/zynq_interface/ip/
+fft_hw_sw_git/bd/zynq_interface/zynq_interface/hw_handoff/
+fft_hw_sw_git/bd/zynq_interface/zynq_interface/ipshared/
+fft_hw_sw_git/bd/zynq_interface/zynq_interface/sim/
+fft_hw_sw_git/bd/zynq_interface/zynq_interface/synth/
+fft_hw_sw_git/bd/zynq_interface/zynq_interface/ui/
