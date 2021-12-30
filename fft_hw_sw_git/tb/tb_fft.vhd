@@ -12,9 +12,9 @@ architecture Behavioral of tb_fft is
             --Inputs - Port A
             ENA            : IN STD_LOGIC;  --opt port
             WEA            : IN STD_LOGIC_VECTOR(0 DOWNTO 0);
-            ADDRA          : IN STD_LOGIC_VECTOR(11 DOWNTO 0);
-            DINA           : IN STD_LOGIC_VECTOR(63 DOWNTO 0);
-            DOUTA          : OUT STD_LOGIC_VECTOR(63 DOWNTO 0);
+            ADDRA          : IN STD_LOGIC_VECTOR(12 DOWNTO 0);
+            DINA           : IN STD_LOGIC_VECTOR(31 DOWNTO 0);
+            DOUTA          : OUT STD_LOGIC_VECTOR(31 DOWNTO 0);
             CLKA           : IN STD_LOGIC;
             
             --Inputs - Port B
@@ -28,10 +28,12 @@ architecture Behavioral of tb_fft is
     END COMPONENT;
     
     signal start_flag, stop_flag : std_logic := '0';    
-    signal s_clk, s_rst, o_bram_en, s_start_op, s_start_stage, s_end_op, s_stage_fin, s_ena : std_logic := '0';
+    signal s_clk, s_rst, o_bram_en, s_start_op, s_start_stage, s_end_op, s_ena : std_logic := '0';
+    signal s_stage_flag : std_logic_vector(1 downto 0) := "00";
+    signal s_debug_regbank_addr : std_logic_vector(2 downto 0) := (others => '0');
     signal s_wea, o_bram_wen : std_logic_vector(0 downto 0) := "0";
-    signal s_addra : std_logic_vector(11 downto 0) := (others => '0');
-    signal s_dina, s_douta : std_logic_vector(63 downto 0) := (others => '0');
+    signal s_addra : std_logic_vector(12 downto 0) := (others => '0');
+    signal s_dina, s_douta : std_logic_vector(31 downto 0) := (others => '0');
     signal i_bram_data, o_bram_data, s_bram_data : std_logic_vector(63 downto 0) := (others => '0');
     signal o_bram_addr, s_start_addr : std_logic_vector(23 downto 0) := (others => '0');
     signal s_arm_data_muxsel : std_logic_vector(23 downto 0) := (others => '0');
@@ -54,7 +56,10 @@ begin
                     i_start_op => s_start_op,
                     i_start_stage => s_start_stage,
                     i_end_op => s_end_op,
-                    o_stage_fin => s_stage_fin);
+                    o_stage_flag => s_stage_flag,
+                    i_debug_regbank_addr => s_debug_regbank_addr,
+                    o_debug_regbank_data_real => open,
+                    o_debug_regbank_data_imag => open);
                     
     bram: blk_mem_gen_0 
           port map( clka => s_clk,
@@ -88,22 +93,36 @@ begin
                 start_flag <= '1';
                 s_stage_num <= 1;
                 s_wait_cycles <= 1;
-            elsif s_wait_cycles < 11 then
+            elsif s_wait_cycles < 12 then
                 s_wait_cycles <= s_wait_cycles + 1; 
-            elsif s_stage_num < 4 then
-                if s_stage_num = 1 then
+            elsif s_stage_num < 12 then
+                if s_stage_num < 4 then
                     s_arm_data_muxsel <= "111" & "110" & "101" & "100" & "011" & "010" & "001" & "000";
                     s_arm_twiddle_muxsel <= "000" & "000" & "000" & "000";
+                    if s_stage_num mod 2 = 1 then
+                        s_start_stage <= '1';
+                    else
+                        s_start_stage <= '0';
+                    end if;
                     s_stage_num <= s_stage_num + 1;
-                elsif s_stage_num = 2 then
+                elsif s_stage_num < 8 then
                     s_arm_data_muxsel <= "111" & "101" & "110" & "100" & "011" & "001" & "010" & "000";
                     s_arm_twiddle_muxsel <= "010" & "000" & "010" & "000";
+                    if s_stage_num mod 2 = 1 then
+                        s_start_stage <= '1';
+                    else
+                        s_start_stage <= '0';
+                    end if;
                     s_stage_num <= s_stage_num + 1;
-                elsif s_stage_num = 3 then
+                elsif s_stage_num < 12 then
                     s_arm_data_muxsel <= "111" & "011" & "101" & "001" & "110" & "010" & "100" & "000";
                     s_arm_twiddle_muxsel <= "011" & "010" & "001" & "000";
+                    if s_stage_num mod 2 = 1 then
+                        s_start_stage <= '1';
+                    else
+                        s_start_stage <= '0';
+                    end if;
                     s_stage_num <= s_stage_num + 1;
-                    s_end_op <= '1';
                 end if;
             elsif stop_flag = '0' then    
                s_end_op <= '1';
